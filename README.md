@@ -1,49 +1,139 @@
-# Luna Bot Session Generator
+---
 
-A minimal service to generate and store WhatsApp pairing sessions and expose a session status endpoint.
+# 🤖 Luna Bot Session Generator
+
+A **lightweight web service** to generate, manage, and validate **WhatsApp bot sessions** using either **QR code** or **pairing code**.
+
+🌐 **Live Demo:**
+👉 [https://lunaconnect.onrender.com/](https://lunaconnect.onrender.com/)
 
 ---
 
-## Environment
+## ✨ Features
 
-Create a file named `.env` in the project root with the following content (only this variable is required):
+* 🔐 Generate WhatsApp sessions securely
+* 📱 Two pairing methods:
 
-```
+  * **QR Code**
+  * **Pairing Code**
+* 🧾 Auto-generated **session token**
+* ⏱️ Session validity checking endpoint
+* 🗄️ MongoDB-backed session storage
+* 🧑‍💻 Simple web UI + curl support
+
+---
+
+## 🛠️ Environment Setup
+
+Create a `.env` file in the project root with **only one required variable**:
+
+```env
 MONGO=mongodb://<username>:<password>@host:port/database
 ```
 
-Replace the example with your MongoDB connection string.
+🔁 Replace the placeholder with your actual MongoDB connection string.
 
-## Install & Run
+---
+
+## 🚀 Install & Run
 
 ```bash
 npm install
 npm start
 ```
 
-## Usage
+The server will start on:
 
-- Check session status:
-
-  GET http://localhost:8000/session/<session-token>
-
-- Example curl:
-
-  curl -i http://localhost:8000/session/LUNA~abcdef12345
-
-- (Optional) Start pairing by hitting the pairing endpoint:
-
-  GET http://localhost:8000/pair?number=<international-number-without-plus>
-
-## Notes
-
-- Session folders are created using the `session_<number>` pattern; add `session*` to your `.gitignore` to keep credentials out of git.
-- You only need to set the `MONGO` env var; no other environment variables are required.
-
-## Contact
-
-GitHub: https://github.com/frionode  (use `frionode` as social handle)
+```
+http://localhost:8000
+```
 
 ---
 
-Licensed under the MIT License.
+## 🧭 Usage Guide
+
+### 🌐 Web Interface
+
+Open your browser and go to:
+
+👉 **[http://localhost:8000/](http://localhost:8000/)**
+
+You’ll be given **two ways to connect your WhatsApp account**:
+
+1. 🔑 **Pairing Code**
+2. 📷 **QR Code**
+
+> ⚠️ Use **only one method** — both generate the same result.
+
+Once paired, you’ll receive a **session token** like:
+
+```text
+LUNA~abcdef12345
+```
+
+Use this token in your bot’s environment variables:
+
+```env
+SESSION=LUNA~abcdef12345
+```
+
+---
+
+### ✅ Check Session Status
+
+You can verify whether a session is still valid by visiting:
+
+```
+http://localhost:8000/session/LUNA~abcdef12345
+```
+
+---
+
+### 🧪 Using curl
+
+#### 🔍 Check session validity
+
+```bash
+curl -i http://localhost:8000/session/LUNA~abcdef12345
+```
+
+#### 🔗 Pair using phone number (advanced / optional)
+
+> ⚠️ Not recommended for regular use, but useful for testing.
+
+```http
+GET http://localhost:8000/pair?number=<international-number-without-plus>
+```
+
+Example:
+
+```
+http://localhost:8000/pair?number=254712345678
+```
+
+---
+
+## 📝 Notes
+
+* ⏳ **Session tokens are valid for 24 hours by default**
+
+  * You can extend this by modifying the MongoDB TTL configuration
+* ⚙️ Only the `MONGO` environment variable is required
+* 🔒 No sensitive credentials are exposed to the client
+
+---
+
+## 📬 Contact & Community
+
+* 💻 **GitHub:** [https://github.com/frionode](https://github.com/frionode)
+* 📢 **Telegram:** [https://t.me/frionode](https://t.me/frionode)
+* 🌍 **Socials:**
+  Find me everywhere as **[@frionode](https://t.me/frionode)**
+
+---
+
+## 📄 License
+
+🪪 Licensed under the **MIT License**
+
+---
