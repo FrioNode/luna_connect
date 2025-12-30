@@ -66,6 +66,19 @@ router.get('/', async (req, res) => {
             // Generate a short session token now so frontend can display it alongside the QR
             sessionToken = sessionToken || `LUNA~${crypto.randomBytes(5).toString('hex')}`;
 
+            // Persist a placeholder session record so the token is discoverable even if we restart
+            try {
+                await Session.updateOne({ key: sessionToken }, { $set: { value: '', status: 'pending', createdAt: new Date() } }, { upsert: true });
+                console.log('Saved placeholder session record for QR token:', sessionToken);
+            } catch (err) { console.error('Failed to save placeholder session record for QR token:', err); }
+
+            // Also write token to the session folder for later recovery if needed
+            try {
+                if (!fs.existsSync(dirs)) fs.mkdirSync(dirs, { recursive: true });
+                fs.writeFileSync(dirs + '/token.txt', sessionToken, 'utf-8');
+                console.log('Wrote token to file:', dirs + '/token.txt');
+            } catch (err) { console.error('Failed to write token file:', err); }
+
             if (!responseSent) {
                     responseSent = true;
                     console.log('Sending QR DataURL length:', qrDataURL.length);
@@ -173,8 +186,8 @@ router.get('/', async (req, res) => {
 
                     const token = sessionToken;
 
-                    // Save session to MongoDB
-                    await Session.create({ key: token, value: base64Data });
+                    // Save session to MongoDB (upsert to avoid duplicate key issues)
+                    await Session.updateOne({ key: token }, { $set: { value: base64Data, status: 'registered' } }, { upsert: true });
 
                     let messageSent = false;
 
@@ -212,11 +225,11 @@ router.get('/', async (req, res) => {
                         console.log('Response already sent earlier; cannot include messageSent in response (QR flow). messageSent:', messageSent);
                     }
 
-                    // Cleanup local session folder after 1 minute
+                    // Cleanup local session folder after 5 minutes (allow more time for device to finish pairing on slow VPS)
                     setTimeout(() => {
                         console.log('🧹 Cleaning up session folder...');
                         removeFile(dirs);
-                    }, 60000);
+                    }, 300000);
                 } catch (err) {
                     console.error('❌ Error saving session or sending token:', err);
                     if (!responseSent) {

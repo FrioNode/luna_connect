@@ -12,6 +12,8 @@ mongoose.connect(MONGO_URL)
 const sessionSchema = new mongoose.Schema({
   key: { type: String, unique: true },
   value: String,
+  status: { type: String, default: 'pending' },
+  lastError: { type: String, default: null },
   notified: { type: Boolean, default: false },
   notifiedAt: { type: Date, default: null },
   createdAt: { type: Date, default: Date.now, expires: 86400 }
