@@ -1,26 +1,49 @@
-# **Knight Bot Session Generator**
+# Knight Bot Session Generator
 
-[![Generate Pair Code](https://img.shields.io/badge/Generate%20Pair%20Code-Click%20Here-brightgreen?style=for-the-badge)](https://knight-bot-paircode.onrender.com)
+A minimal service to generate and store WhatsApp pairing sessions and expose a session status endpoint.
 
 ---
 
-### Quick Start
+## Environment
 
-- **1) Create a Mega.nz account**  
-  [![MEGA - Create Account](https://img.shields.io/badge/MEGA-Create%20Account-red?logo=mega&logoColor=white)](https://mega.nz)
+Create a file named `.env` in the project root with the following content (only this variable is required):
 
-- **2) Paste your credentials in `mega.js`**  
-  Open `mega.js` and update `email` and `password`:
-
-```js
-// mega.js
-const auth = {
-  email: 'your-email@domain.com',
-  password: 'your-strong-password',
-  userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/42.0.2311.135 Safari/537.36 Edge/12.246'
-};
+```
+MONGO=mongodb://<username>:<password>@host:port/database
 ```
 
-- **3) Deploy to Render**  
-  [![Render - Deploy](https://img.shields.io/badge/Render-Deploy%20Web%20Service-46E3B7?logo=render&logoColor=white)](https://render.com)
-  
+Replace the example with your MongoDB connection string.
+
+## Install & Run
+
+```bash
+npm install
+npm start
+```
+
+## Usage
+
+- Check session status:
+
+  GET http://localhost:8000/session/<session-token>
+
+- Example curl:
+
+  curl -i http://localhost:8000/session/LUNA~abcdef12345
+
+- (Optional) Start pairing by hitting the pairing endpoint:
+
+  GET http://localhost:8000/pair?number=<international-number-without-plus>
+
+## Notes
+
+- Session folders are created using the `session_<number>` pattern; add `session*` to your `.gitignore` to keep credentials out of git.
+- You only need to set the `MONGO` env var; no other environment variables are required.
+
+## Contact
+
+GitHub: https://github.com/frionode  (use `frionode` as social handle)
+
+---
+
+Licensed under the MIT License.

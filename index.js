@@ -36,7 +36,7 @@ app.use('/qr', qrRouter);
 app.use('/session', sessionRouter);
 
 app.listen(PORT, () => {
-    console.log(`YoutTube: @mr_unique_hacker\n\nGitHub: @mruniquehacker\n\nServer running on http://localhost:${PORT}`);
+    console.log(`YoutTube: @frionode\n\nGitHub: @frionode\n\nServer running on http://localhost:${PORT}`);
 });
 
 export default app;
