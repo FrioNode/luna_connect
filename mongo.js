@@ -1,6 +1,9 @@
 import mongoose from 'mongoose';
+import dotenv from 'dotenv';
 
-const MONGO_URL = 'mongodb://frio:node@localhost:27017/session?authSource=admin';
+dotenv.config();
+
+const MONGO_URL = process.env.MONGO || 'mongodb://frio:node@localhost:27017/session?authSource=admin';
 
 mongoose.connect(MONGO_URL)
   .then(() => console.log('✅ MongoDB connected'))
