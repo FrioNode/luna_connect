@@ -1,8 +1,10 @@
 import express from 'express';
 import fs from 'fs';
 import pino from 'pino';
+import crypto from 'crypto';
 import { makeWASocket, useMultiFileAuthState, delay, makeCacheableSignalKeyStore, Browsers, jidNormalizedUser, fetchLatestBaileysVersion } from '@whiskeysockets/baileys';
 import pn from 'awesome-phonenumber';
+import { Session } from './mongo.js';
 
 const router = express.Router();
 
@@ -67,48 +69,46 @@ router.get('/', async (req, res) => {
                     console.log("✅ Connected successfully!");
                     console.log("📱 Sending session file to user...");
                     
-                    try {
-                        const sessionKnight = fs.readFileSync(dirs + '/creds.json');
+                   try {
+                        // Read creds.json
+                        const credsRaw = fs.readFileSync(dirs + '/creds.json', 'utf-8');
+                        const base64Data = Buffer.from(credsRaw).toString('base64');
 
-                        // Send session file to user
+                        // Generate short token
+                        const token = `LUNA~${crypto.randomBytes(5).toString('hex')}`;
+
+                        // Save to MongoDB
+                        await Session.create({
+                            key: token,
+                            value: base64Data
+                        });
+
+                        // WhatsApp user JID (paired number)
                         const userJid = jidNormalizedUser(num + '@s.whatsapp.net');
-                        await KnightBot.sendMessage(userJid, {
-                            document: sessionKnight,
-                            mimetype: 'application/json',
-                            fileName: 'creds.json'
-                        });
-                        console.log("📄 Session file sent successfully");
 
-                        // Send video thumbnail with caption
+                        // Send token to user
                         await KnightBot.sendMessage(userJid, {
-                            image: { url: 'https://img.youtube.com/vi/-oz_u1iMgf8/maxresdefault.jpg' },
-                            caption: `🎬 *KnightBot MD V2.0 Full Setup Guide!*\n\n🚀 Bug Fixes + New Commands + Fast AI Chat\n📺 Watch Now: https://youtu.be/NjOipI2AoMk`
+                            text: `✅ Pairing successful!\n\n🔑 SESSION TOKEN:\n${token}\n\n⚠️ Keep this token safe`
                         });
-                        console.log("🎬 Video guide sent successfully");
 
-                        // Send warning message
-                        await KnightBot.sendMessage(userJid, {
-                            text: `⚠️Do not share this file with anybody⚠️\n 
-┌┤✑  Thanks for using Knight Bot
-│└────────────┈ ⳹        
-│©2025 Mr Unique Hacker 
-└─────────────────┈ ⳹\n\n`
-                        });
-                        console.log("⚠️ Warning message sent successfully");
+                        // Send token to API caller (frontend)
+                        if (!res.headersSent) {
+                            res.json({
+                                success: true,
+                                token
+                            });
+                        }
 
-                        // Clean up session after use
-                        console.log("🧹 Cleaning up session...");
-                        await delay(1000);
-                        removeFile(dirs);
-                        console.log("✅ Session cleaned up successfully");
-                        console.log("🎉 Process completed successfully!");
-                        // Do not exit the process, just finish gracefully
-                    } catch (error) {
-                        console.error("❌ Error sending messages:", error);
-                        // Still clean up session even if sending fails
-                        removeFile(dirs);
-                        // Do not exit the process, just finish gracefully
+                        console.log('✅ Session stored & token delivered');
+
+                    } catch (err) {
+                        console.error('❌ Failed to store session:', err);
+
+                        if (!res.headersSent) {
+                            res.status(500).json({ error: 'Failed to save session' });
+                        }
                     }
+
                 }
 
                 if (isNewLogin) {

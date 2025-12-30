@@ -6,7 +6,8 @@ import path from 'path';
 // Importing the modules
 import pairRouter from './pair.js';
 import qrRouter from './qr.js';
-import QRCode from 'qrcode';
+import sessionRouter from './session.js';
+
 
 const app = express();
 
@@ -32,6 +33,7 @@ app.get('/', (req, res) => {
 
 app.use('/pair', pairRouter);
 app.use('/qr', qrRouter);
+app.use('/session', sessionRouter);
 
 app.listen(PORT, () => {
     console.log(`YoutTube: @mr_unique_hacker\n\nGitHub: @mruniquehacker\n\nServer running on http://localhost:${PORT}`);

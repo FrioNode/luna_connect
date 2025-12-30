@@ -16,8 +16,10 @@
   "dependencies": {
     "@whiskeysockets/baileys": "^6.7.21",
     "awesome-phonenumber": "7.2.0",
-    "body-parser": "^1.20.3",
+    "body-parser": "^1.20.4",
+    "crypto": "^1.0.1",
     "express": "^4.21.2",
+    "mongoose": "^9.0.2",
     "path": "^0.12.7",
     "phone": "3.1.55",
     "pino": "9.5.0",

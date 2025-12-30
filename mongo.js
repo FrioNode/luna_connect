@@ -1,0 +1,15 @@
+import mongoose from 'mongoose';
+
+const MONGO_URL = 'mongodb://frio:node@localhost:27017/luna?authSource=admin';
+
+mongoose.connect(MONGO_URL)
+  .then(() => console.log('✅ MongoDB connected'))
+  .catch(console.error);
+
+const sessionSchema = new mongoose.Schema({
+  key: { type: String, unique: true },
+  value: String,
+  createdAt: { type: Date, default: Date.now, expires: 86400 }
+});
+
+export const Session = mongoose.model('Session', sessionSchema);
