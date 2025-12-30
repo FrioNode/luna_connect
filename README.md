@@ -1,4 +1,4 @@
-# Knight Bot Session Generator
+# Luna Bot Session Generator
 
 A minimal service to generate and store WhatsApp pairing sessions and expose a session status endpoint.
 
