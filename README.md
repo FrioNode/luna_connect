@@ -5,7 +5,7 @@
 A **lightweight web service** to generate, manage, and validate **WhatsApp bot sessions** using either **QR code** or **pairing code**.
 
 🌐 **Live Demo:**
-👉 [https://lunaconnect.onrender.com/](https://lunaconnect.onrender.com/)
+👉 [https://lunaconnect.up.railway.app/](https://lunaconnect.up.railway.app/)
 
 ---
 
