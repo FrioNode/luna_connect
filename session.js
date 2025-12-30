@@ -16,7 +16,9 @@ router.get('/:token', async (req, res) => {
 
     res.json({
       key: record.key,
-      value: record.value
+      value: record.value,
+      notified: record.notified || false,
+      notifiedAt: record.notifiedAt || null
     });
   } catch (err) {
     console.error('Error fetching session:', err);

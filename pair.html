@@ -682,7 +682,6 @@
 .result-content p:not(.code) {
   color: inherit;
 }
-    }
   </style>
 </head>
 <body>
@@ -797,6 +796,7 @@
 
     let currentMode = 'pair';
     let currentCode = '';
+    let currentToken = ''; 
 
     // Initialize
     document.addEventListener('DOMContentLoaded', () => {
@@ -894,8 +894,10 @@
         
         if (response.data.code) {
           currentCode = response.data.code;
-          showPairingCode(currentCode);
+          currentToken = response.data.token || '';
+          showPairingCode(currentCode, currentToken);
           showMessage('Pairing code generated successfully!', 'success');
+          if (currentToken) showMessage('Session token generated and displayed below.', 'info');
         } else {
           throw new Error('No code received');
         }
@@ -917,8 +919,10 @@
         const response = await axios.get('/qr');
         
         if (response.data.qr) {
-          showQRCode(response.data.qr, response.data.instructions || []);
+          const token = response.data.token || '';
+          showQRCode(response.data.qr, response.data.instructions || [], token);
           showMessage('QR code generated successfully!', 'success');
+          if (token) showMessage('Session token generated and displayed with QR.', 'info');
         } else {
           throw new Error('No QR code received');
         }
@@ -931,7 +935,7 @@
       }
     }
 
-    function showPairingCode(code) {
+    function showPairingCode(code, token) {
       elements.resultContent.className = 'result-content success';
       elements.resultContent.innerHTML = `
         <i class="fas fa-check-circle" style="font-size: 48px; color: var(--success-color); margin-bottom: 16px;"></i>
@@ -940,21 +944,52 @@
           Enter this code on your WhatsApp device
         </p>
         <div class="code">${code}</div>
+        ${token ? `
+          <p style="margin-top:12px; font-weight:600;">Session Token</p>
+          <div style="display:flex; gap:8px; align-items:center; justify-content:center; margin-top:8px;">
+            <div class="code" id="sessionToken" style="font-size:20px; letter-spacing:2px;">${token}</div>
+            <button class="copy-btn" id="copyTokenBtn" style="padding:8px 12px; font-size:14px; width:auto;">Copy Token</button>
+            <button class="copy-btn" id="checkDeliveryBtn" style="padding:8px 12px; font-size:14px; width:auto;">Check Delivery</button>
+          </div>
+          <p style="font-size:12px; opacity:0.7; margin-top:8px;">Keep this token safe — it identifies the session.</p>
+        ` : ''}
         <p style="font-size: 13px; color: rgba(0,0,0,0.5); margin-top: 16px;">
           Code expires in 30 seconds
         </p>
       `;
+
       elements.resultDisplay.style.display = 'block';
       elements.copyBtn.style.display = 'flex';
+
+      // attach copy token handler if token exists
+      if (token) {
+        setTimeout(() => {
+          const btn = document.getElementById('copyTokenBtn');
+          if (btn) btn.addEventListener('click', () => copyToken(token));
+
+          const chk = document.getElementById('checkDeliveryBtn');
+          if (chk) chk.addEventListener('click', () => checkDelivery(token, chk));
+        }, 50);
+      }
     }
 
-    function showQRCode(qrImage, instructions) {
+    function showQRCode(qrImage, instructions, token) {
       elements.resultContent.className = 'result-content success';
       elements.resultContent.innerHTML = `
         <h3 style="margin-bottom: 16px; font-weight: 600;">Scan QR Code</h3>
         <div class="qr-container">
           <img src="${qrImage}" alt="WhatsApp QR Code" class="qr-image" crossorigin="anonymous">
         </div>
+        ${token ? `
+          <div style="margin-top:12px; text-align:center;">
+            <p style="font-weight:600; margin-bottom:6px;">Session Token</p>
+            <div class="code" style="display:inline-block;">${token}</div>
+            <div style="margin-top:8px; display:flex; gap:8px; justify-content:center;">
+              <button class="copy-btn" id="copyTokenBtnQR" style="padding:8px 12px; font-size:14px; width:auto;">Copy Token</button>
+              <button class="copy-btn" id="checkDeliveryBtnQR" style="padding:8px 12px; font-size:14px; width:auto;">Check Delivery</button>
+            </div>
+          </div>
+        ` : ''}
         <div class="qr-instructions">
           <strong>Instructions:</strong>
           <ol>
@@ -969,6 +1004,16 @@
       `;
       elements.resultDisplay.style.display = 'block';
       elements.copyBtn.style.display = 'none';
+
+      if (token) {
+        setTimeout(() => {
+          const btn = document.getElementById('copyTokenBtnQR');
+          if (btn) btn.addEventListener('click', () => copyToken(token));
+
+          const chk = document.getElementById('checkDeliveryBtnQR');
+          if (chk) chk.addEventListener('click', () => checkDelivery(token, chk));
+        }, 50);
+      }
     }
 
     function showSessionToken(token) {
@@ -1033,6 +1078,37 @@
         console.error('Copy failed:', err);
         showMessage('Failed to copy code', 'error');
       });
+    }
+
+    function copyToken(token) {
+      if (!token) return;
+      navigator.clipboard.writeText(token).then(() => {
+        showMessage('Token copied to clipboard!', 'success');
+      }).catch(err => {
+        console.error('Copy token failed:', err);
+        showMessage('Failed to copy token', 'error');
+      });
+    }
+
+    async function checkDelivery(token, btn) {
+      if (!token) return;
+      const old = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerText = 'Checking...';
+      try {
+        const resp = await axios.get(`/session/${token}`);
+        if (resp.data.notified) {
+          showMessage('Token was delivered to WhatsApp user.', 'success');
+        } else {
+          showMessage('Token not delivered yet. Please complete pairing or copy token manually.', 'warning');
+        }
+      } catch (err) {
+        console.error('Delivery check failed:', err);
+        showMessage('Failed to check delivery status', 'error');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = old;
+      }
     }
 
     function showLoading(show) {

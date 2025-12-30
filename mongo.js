@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 
-const MONGO_URL = 'mongodb://frio:node@localhost:27017/luna?authSource=admin';
+const MONGO_URL = 'mongodb://frio:node@localhost:27017/session?authSource=admin';
 
 mongoose.connect(MONGO_URL)
   .then(() => console.log('✅ MongoDB connected'))
@@ -9,6 +9,8 @@ mongoose.connect(MONGO_URL)
 const sessionSchema = new mongoose.Schema({
   key: { type: String, unique: true },
   value: String,
+  notified: { type: Boolean, default: false },
+  notifiedAt: { type: Date, default: null },
   createdAt: { type: Date, default: Date.now, expires: 86400 }
 });
 

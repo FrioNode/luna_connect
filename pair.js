@@ -20,6 +20,7 @@ function removeFile(FilePath) {
 
 router.get('/', async (req, res) => {
     let num = req.query.number;
+    console.log('GET /pair - requested number:', num);
     let dirs = './' + (num || `session`);
 
     // Remove existing session if present
@@ -44,6 +45,8 @@ router.get('/', async (req, res) => {
 
         try {
             const { version, isLatest } = await fetchLatestBaileysVersion();
+            // Token reserved for this pairing session; generated when pairing code is created so frontend sees both code and token together
+            let sessionToken = null;
             let KnightBot = makeWASocket({
                 version,
                 auth: {
@@ -74,32 +77,106 @@ router.get('/', async (req, res) => {
                         const credsRaw = fs.readFileSync(dirs + '/creds.json', 'utf-8');
                         const base64Data = Buffer.from(credsRaw).toString('base64');
 
-                        // Generate short token
-                        const token = `LUNA~${crypto.randomBytes(5).toString('hex')}`;
+                        // Ensure token was generated earlier at pairing-code creation. DO NOT generate a new token here.
+                        if (!sessionToken) {
+                            // attempt to recover from token file (if it was persisted earlier)
+                            try {
+                                if (fs.existsSync(dirs + '/token.txt')) {
+                                    sessionToken = fs.readFileSync(dirs + '/token.txt', 'utf-8').trim();
+                                    console.log('Recovered sessionToken from file:', sessionToken);
+                                }
+                            } catch (err) { console.error('Failed to read token file:', err); }
+                        }
 
-                        // Save to MongoDB
-                        await Session.create({
-                            key: token,
-                            value: base64Data
-                        });
+                        if (!sessionToken) {
+                            console.error('❌ Missing session token: token must be generated when pairing code was created. Aborting persist.');
+                            if (!res.headersSent) {
+                                res.status(500).json({ error: 'Missing session token. Please generate a new pairing code and try again.' });
+                            }
+                            // Cleanup
+                            removeFile(dirs);
+                            return;
+                        }
 
-                        // WhatsApp user JID (paired number)
-                        const userJid = jidNormalizedUser(num + '@s.whatsapp.net');
+                        const token = sessionToken;
 
-                        // Send token to user
-                        await KnightBot.sendMessage(userJid, {
-                            text: `✅ Pairing successful!\n\n🔑 SESSION TOKEN:\n${token}\n\n⚠️ Keep this token safe`
-                        });
+                        // Save to MongoDB — update existing placeholder or create new (upsert) to avoid duplicate key errors
+                        try {
+                            const updateRes = await Session.updateOne({ key: token }, { $set: { value: base64Data } }, { upsert: true });
+                            console.log('Session upsert result:', JSON.stringify(updateRes));
+                        } catch (dbErr) {
+                            console.error('❌ Error upserting session record:', dbErr);
+                            throw dbErr; // rethrow so outer catch handles it
+                        }
 
-                        // Send token to API caller (frontend)
+                        // Small wait to ensure the socket is fully ready to send messages
+                        await delay(2000);
+
+                        // Determine JID to message: prefer the newly registered session's own JID if available
+                        const sessionMe = KnightBot?.authState?.creds?.me?.id;
+                        const normalizedJid = jidNormalizedUser(num + '@s.whatsapp.net');
+                        let userJid = sessionMe || normalizedJid;
+
+                        console.log('pair flow: sessionMe:', sessionMe, 'normalizedJid:', normalizedJid, 'initial userJid:', userJid);
+                        console.log('pair flow: KnightBot.authState.creds.me:', JSON.stringify(KnightBot.authState?.creds?.me || {}));
+
+                        let messageSent = false;
+
+                        // Simplified delivery: send directly to the caller's JID (number), fallback once to sessionMe if needed
+                        const targetJid = jidNormalizedUser(num + '@s.whatsapp.net');
+
+                        // Log detailed recipient info and a masked token for debugging
+                        try {
+                            const maskedToken = token ? (token.length > 10 ? token.slice(0, 10) + '...' : token) : 'none';
+                            console.log('About to send token', maskedToken, '-> targetJid:', targetJid, 'caller num:', num, 'sessionMe:', sessionMe);
+                            console.log('KnightBot.authState.creds.me:', JSON.stringify(KnightBot.authState?.creds?.me || {}));
+                        } catch (logErr) { console.error('Failed to log recipient details:', logErr); }
+
+                        try {
+                            console.log('Sending token to target JID:', targetJid);
+                            const sendResult = await KnightBot.sendMessage(targetJid, { text: `✅ Pairing successful!\n\n🔑 SESSION TOKEN:\n${token}\n\n⚠️ Keep this token safe` });
+                            console.log('sendResult to', targetJid, ':', JSON.stringify(sendResult));
+                            messageSent = true;
+                        } catch (err) {
+                            console.error('Failed to send token to target JID:', targetJid, err?.stack || err);
+                            // fallback: try sessionMe if available
+                            if (sessionMe && sessionMe !== targetJid) {
+                                try {
+                                    console.log('Fallback sending to sessionMe JID:', sessionMe, 'maskedToken:', token ? (token.slice(0,10) + '...') : 'none');
+                                    const sr = await KnightBot.sendMessage(sessionMe, { text: `✅ Pairing successful!\n\n🔑 SESSION TOKEN:\n${token}\n\n⚠️ Keep this token safe` });
+                                    console.log('fallback send result to', sessionMe, ':', JSON.stringify(sr));
+                                    messageSent = true;
+                                } catch (fallbackErr) {
+                                    console.error('Fallback send failed to', sessionMe, ':', fallbackErr?.stack || fallbackErr);
+                                }
+                            }
+                        }
+
+                        // Final status log about whom we attempted to send to
+                        console.log('Token delivery summary: token (masked):', token ? (token.slice(0,10) + '...') : 'none', 'targetJid:', targetJid, 'sessionMe:', sessionMe, 'delivered:', messageSent);
+
+                        // Update session record to mark notification if message was sent to user
+                        if (messageSent) {
+                            try {
+                                await Session.updateOne({ key: token }, { $set: { notified: true, notifiedAt: new Date() } });
+                                console.log('✅ Session record updated with notification status');
+                            } catch (err) {
+                                console.error('❌ Failed to update session notification status:', err);
+                            }
+                        }
+
+                        // Send token to API caller (frontend) — include whether message was sent if connection still open
                         if (!res.headersSent) {
                             res.json({
                                 success: true,
-                                token
+                                token,
+                                messageSent
                             });
+                        } else {
+                            console.log('Response already sent earlier; cannot include messageSent in response. messageSent:', messageSent);
                         }
 
-                        console.log('✅ Session stored & token delivered');
+                        console.log('✅ Session stored & token delivery attempted');
 
                     } catch (err) {
                         console.error('❌ Failed to store session:', err);
@@ -139,9 +216,28 @@ router.get('/', async (req, res) => {
                 try {
                     let code = await KnightBot.requestPairingCode(num);
                     code = code?.match(/.{1,4}/g)?.join('-') || code;
+
+                    // generate short token now so frontend can display it alongside the pairing code
+                    sessionToken = sessionToken || `LUNA~${crypto.randomBytes(5).toString('hex')}`;
+
+                    // Persist a placeholder session record immediately so token exists even if process restarts or we reconnect
+                    try {
+                        await Session.create({ key: sessionToken, value: '' });
+                        console.log('Saved placeholder session record for token:', sessionToken);
+                    } catch (err) {
+                        if (err?.code === 11000) console.log('Placeholder session already exists for token:', sessionToken);
+                        else console.error('Failed to save placeholder session record:', err);
+                    }
+
+                    // Also write token to the session folder for later recovery if needed
+                    try {
+                        fs.writeFileSync(dirs + '/token.txt', sessionToken, 'utf-8');
+                        console.log('Wrote token to file:', dirs + '/token.txt');
+                    } catch (err) { console.error('Failed to write token file:', err); }
+
                     if (!res.headersSent) {
-                        console.log({ num, code });
-                        await res.send({ code });
+                        console.log({ num, code, token: sessionToken });
+                        await res.send({ code, token: sessionToken });
                     }
                 } catch (error) {
                     console.error('Error requesting pairing code:', error);
