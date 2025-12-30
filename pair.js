@@ -61,11 +61,12 @@ router.get('/', async (req, res) => {
                 browser: Browsers.windows('Chrome'),
                 markOnlineOnConnect: false,
                 generateHighQualityLinkPreview: false,
-                defaultQueryTimeoutMs: 60000,
-                connectTimeoutMs: 60000,
-                keepAliveIntervalMs: 30000,
-                retryRequestDelayMs: 250,
-                maxRetries: 5,
+                // Increased timeouts for cloud deployments (e.g., Render)
+                defaultQueryTimeoutMs: 120000, // 2 minutes
+                connectTimeoutMs: 120000, // 2 minutes
+                keepAliveIntervalMs: 60000, // 1 minute
+                retryRequestDelayMs: 500,
+                maxRetries: 10,
             });
 
             KnightBot.ev.on('connection.update', async (update) => {
