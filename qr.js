@@ -102,6 +102,33 @@ router.get('/', async (req, res) => {
             maxRetries: 10,
         };
 
+        // Helper to wait for device registration (creds file or socket 'me')
+        async function waitForRegistration(dirsPath, sock, maxWaitMs = 45000, intervalMs = 1000) {
+            const start = Date.now();
+            while ((Date.now() - start) < maxWaitMs) {
+                try {
+                    const meId = sock?.authState?.creds?.me?.id;
+                    if (meId) {
+                        console.log('Registration detected via socket me id:', meId);
+                        return true;
+                    }
+                    const fp = dirsPath + '/creds.json';
+                    if (fs.existsSync(fp)) {
+                        const raw = fs.readFileSync(fp, 'utf-8');
+                        if (raw && raw.includes('"me"')) {
+                            console.log('Registration detected via creds.json');
+                            return true;
+                        }
+                    }
+                } catch (err) {
+                    // ignore
+                }
+                console.log('Waiting for registration to complete...');
+                await delay(intervalMs);
+            }
+            return false;
+        }
+
         let sock = makeWASocket(socketConfig);
         let reconnectAttempts = 0;
         const maxReconnectAttempts = 3;
@@ -116,78 +143,87 @@ router.get('/', async (req, res) => {
                 console.log('✅ Connected successfully! Waiting 5s to ensure session is valid...');
                 reconnectAttempts = 0;
 
-                // Wait a few seconds to ensure WhatsApp finalizes device registration
-                setTimeout(async () => {
+                // Wait for registration to complete (up to 45s) instead of a fixed 5s delay
+                try {
+                    const registered = await waitForRegistration(dirs, sock, 45000);
+                    if (!registered) {
+                        console.error('❌ Registration timed out: device did not finish syncing within 45s. Aborting persist.');
+                        if (!responseSent) {
+                            responseSent = true;
+                            res.status(504).json({ error: 'Registration timed out. Please retry scanning the QR.' });
+                        }
+                        removeFile(dirs);
+                        return;
+                    }
+
+                    const credsFile = fs.readFileSync(dirs + '/creds.json', 'utf-8');
+                    const base64Data = Buffer.from(credsFile).toString('base64');
+
+                    // Ensure token was generated earlier at QR generation time. DO NOT generate a new token here.
+                    if (!sessionToken) {
+                        console.error('❌ Missing session token: token must be generated when QR was created. Aborting persist.');
+                        if (!responseSent) {
+                            responseSent = true;
+                            res.status(500).json({ error: 'Missing session token. Please regenerate the QR and try again.' });
+                        }
+                        // Cleanup session folder
+                        removeFile(dirs);
+                        return;
+                    }
+
+                    const token = sessionToken;
+
+                    // Save session to MongoDB
+                    await Session.create({ key: token, value: base64Data });
+
+                    let messageSent = false;
+
+                    // Attempt to send token to WhatsApp user (best-effort). Log any errors for debugging.
                     try {
-                        const credsFile = fs.readFileSync(dirs + '/creds.json', 'utf-8');
-                        const base64Data = Buffer.from(credsFile).toString('base64');
-
-                        // Ensure token was generated earlier at QR generation time. DO NOT generate a new token here.
-                        if (!sessionToken) {
-                            console.error('❌ Missing session token: token must be generated when QR was created. Aborting persist.');
-                            if (!responseSent) {
-                                responseSent = true;
-                                res.status(500).json({ error: 'Missing session token. Please regenerate the QR and try again.' });
-                            }
-                            // Cleanup session folder
-                            removeFile(dirs);
-                            return;
-                        }
-
-                        const token = sessionToken;
-
-                        // Save session to MongoDB
-                        await Session.create({ key: token, value: base64Data });
-
-                        let messageSent = false;
-
-                        // Attempt to send token to WhatsApp user (best-effort). Log any errors for debugging.
-                        try {
-                            const userJid = sock.authState.creds.me?.id;
-                            console.log('Attempting to send token to WhatsApp user JID:', userJid);
-                            if (userJid) {
-                                await sock.sendMessage(userJid, { text: `✅ Pairing successful!\n\n🔑 SESSION TOKEN:\n${token}\n\n⚠️ Keep this token safe` });
-                                await sock.sendMessage(userJid, { text: `${token}` });
-                                messageSent = true;
-                                console.log("📄 Session token sent to WhatsApp user");
-                            } else {
-                                console.log('No userJid available to send token to.');
-                            }
-                        } catch (err) {
-                            console.error('❌ Failed to send token message to WhatsApp user (QR flow):', err);
-                        }
-
-                        // Update session record to mark notification if message was sent to user
-                        if (messageSent) {
-                            try {
-                                await Session.updateOne({ key: token }, { $set: { notified: true, notifiedAt: new Date() } });
-                                console.log('✅ Session record updated with notification status (QR flow)');
-                            } catch (err) {
-                                console.error('❌ Failed to update session notification status (QR flow):', err);
-                            }
-                        }
-
-                        // Send token back via HTTP including messageSent if possible
-                        if (!responseSent) {
-                            responseSent = true;
-                            res.json({ message: 'Session paired successfully!', token, messageSent });
+                        const userJid = sock.authState.creds.me?.id;
+                        console.log('Attempting to send token to WhatsApp user JID:', userJid);
+                        if (userJid) {
+                            await sock.sendMessage(userJid, { text: `✅ Pairing successful!\n\n🔑 SESSION TOKEN:\n${token}\n\n⚠️ Keep this token safe` });
+                            await sock.sendMessage(userJid, { text: `${token}` });
+                            messageSent = true;
+                            console.log("📄 Session token sent to WhatsApp user");
                         } else {
-                            console.log('Response already sent earlier; cannot include messageSent in response (QR flow). messageSent:', messageSent);
+                            console.log('No userJid available to send token to.');
                         }
-
-                        // Cleanup local session folder after 1 minute
-                        setTimeout(() => {
-                            console.log('🧹 Cleaning up session folder...');
-                            removeFile(dirs);
-                        }, 60000);
                     } catch (err) {
-                        console.error('❌ Error saving session or sending token:', err);
-                        if (!responseSent) {
-                            responseSent = true;
-                            res.status(500).json({ error: 'Failed to save session or notify user' });
+                        console.error('❌ Failed to send token message to WhatsApp user (QR flow):', err);
+                    }
+
+                    // Update session record to mark notification if message was sent to user
+                    if (messageSent) {
+                        try {
+                            await Session.updateOne({ key: token }, { $set: { notified: true, notifiedAt: new Date() } });
+                            console.log('✅ Session record updated with notification status (QR flow)');
+                        } catch (err) {
+                            console.error('❌ Failed to update session notification status (QR flow):', err);
                         }
                     }
-                }, 5000); // wait 5s
+
+                    // Send token back via HTTP including messageSent if possible
+                    if (!responseSent) {
+                        responseSent = true;
+                        res.json({ message: 'Session paired successfully!', token, messageSent });
+                    } else {
+                        console.log('Response already sent earlier; cannot include messageSent in response (QR flow). messageSent:', messageSent);
+                    }
+
+                    // Cleanup local session folder after 1 minute
+                    setTimeout(() => {
+                        console.log('🧹 Cleaning up session folder...');
+                        removeFile(dirs);
+                    }, 60000);
+                } catch (err) {
+                    console.error('❌ Error saving session or sending token:', err);
+                    if (!responseSent) {
+                        responseSent = true;
+                        res.status(500).json({ error: 'Failed to save session or notify user' });
+                    }
+                }
             }
 
             if (connection === 'close') {

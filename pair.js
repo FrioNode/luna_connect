@@ -69,15 +69,54 @@ router.get('/', async (req, res) => {
                 maxRetries: 10,
             });
 
+            // Wait for device registration to complete (creds presence or sock.me).
+            // Returns true if registration detected within maxWaitMs, false on timeout.
+            async function waitForRegistration(dirsPath, sock, maxWaitMs = 45000, intervalMs = 1000) {
+                const start = Date.now();
+                while ((Date.now() - start) < maxWaitMs) {
+                    try {
+                        const meId = sock?.authState?.creds?.me?.id;
+                        if (meId) {
+                            console.log('Registration detected via socket me id:', meId);
+                            return true;
+                        }
+                        const fp = dirsPath + '/creds.json';
+                        if (fs.existsSync(fp)) {
+                            const raw = fs.readFileSync(fp, 'utf-8');
+                            if (raw && raw.includes('"me"')) {
+                                console.log('Registration detected via creds.json');
+                                return true;
+                            }
+                        }
+                    } catch (err) {
+                        // ignore transient read errors
+                    }
+                    console.log('Waiting for registration to complete...');
+                    await delay(intervalMs);
+                }
+                return false;
+            }
+
             KnightBot.ev.on('connection.update', async (update) => {
                 const { connection, lastDisconnect, isNewLogin, isOnline } = update;
 
                 if (connection === 'open') {
                     console.log("✅ Connected successfully!");
-                    console.log("📱 Sending session file to user...");
+                    console.log("📱 Waiting for device to finish registering (up to 45s)...");
                     
                    try {
-                        // Read creds.json
+                        // Wait for registration (creds.json or socket me id)
+                        const registered = await waitForRegistration(dirs, KnightBot, 45000);
+                        if (!registered) {
+                            console.error('❌ Registration timed out: device did not finish syncing within 45s. Aborting persist.');
+                            if (!res.headersSent) {
+                                res.status(504).json({ error: 'Registration timed out. Please try generating a new pairing code.' });
+                            }
+                            removeFile(dirs);
+                            return;
+                        }
+
+                        // Read creds.json now that registration is complete
                         const credsRaw = fs.readFileSync(dirs + '/creds.json', 'utf-8');
                         const base64Data = Buffer.from(credsRaw).toString('base64');
 
