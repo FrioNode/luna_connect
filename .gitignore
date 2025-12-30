@@ -24,8 +24,8 @@ build/
 *.log
 
 # Session files
-
-
+session*
+qr_sessions/*
 
 # Temporary files
 tmp/

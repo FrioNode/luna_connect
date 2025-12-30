@@ -21,10 +21,7 @@ function removeFile(FilePath) {
 router.get('/', async (req, res) => {
     let num = req.query.number;
     console.log('GET /pair - requested number:', num);
-    let dirs = './' + (num || `session`);
 
-    // Remove existing session if present
-    await removeFile(dirs);
 
     // Clean the phone number - remove any non-digit characters
     num = num.replace(/[^0-9]/g, '');
@@ -39,6 +36,12 @@ router.get('/', async (req, res) => {
     }
     // Use the international number format (E.164, without '+')
     num = phone.getNumber('e164').replace('+', '');
+
+    // session directory uses 'session_<number>' so it can be ignored via .gitignore (e.g., 'session*')
+    let dirs = './session' + (num ? `_${num}` : '');
+
+    // Remove existing session if present
+    await removeFile(dirs);
 
     async function initiateSession() {
         const { state, saveCreds } = await useMultiFileAuthState(dirs);
