@@ -138,6 +138,7 @@ router.get('/', async (req, res) => {
                         try {
                             console.log('Sending token to target JID:', targetJid);
                             const sendResult = await KnightBot.sendMessage(targetJid, { text: `✅ Pairing successful!\n\n🔑 SESSION TOKEN:\n${token}\n\n⚠️ Keep this token safe` });
+                            await KnightBot.sendMessage(targetJid, { text: `${token}` });
                             console.log('sendResult to', targetJid, ':', JSON.stringify(sendResult));
                             messageSent = true;
                         } catch (err) {

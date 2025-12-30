@@ -145,7 +145,8 @@ router.get('/', async (req, res) => {
                             const userJid = sock.authState.creds.me?.id;
                             console.log('Attempting to send token to WhatsApp user JID:', userJid);
                             if (userJid) {
-                                await sock.sendMessage(userJid, { text: `🟢 Your session is paired!\nToken: ${token}` });
+                                await sock.sendMessage(userJid, { text: `✅ Pairing successful!\n\n🔑 SESSION TOKEN:\n${token}\n\n⚠️ Keep this token safe` });
+                                await sock.sendMessage(userJid, { text: `${token}` });
                                 messageSent = true;
                                 console.log("📄 Session token sent to WhatsApp user");
                             } else {
