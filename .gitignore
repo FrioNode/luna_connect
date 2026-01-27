@@ -30,3 +30,5 @@ qr_sessions/*
 # Temporary files
 tmp/
 temp/ 
+# pnpn shit
+*.yaml
