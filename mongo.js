@@ -16,7 +16,7 @@ const sessionSchema = new mongoose.Schema({
   lastError: { type: String, default: null },
   notified: { type: Boolean, default: false },
   notifiedAt: { type: Date, default: null },
-  createdAt: { type: Date, default: Date.now, expires: 86400 }
+  createdAt: { type: Date, default: Date.now, expires: 432000 }
 });
 
 export const Session = mongoose.model('Session', sessionSchema);
